@@ -1,0 +1,100 @@
+{
+  "name": "default",
+  "model_type": "zimage",
+  "acrf": {
+    "enable_turbo": true,
+    "turbo_steps": 10,
+    "shift": 3,
+    "jitter_scale": 0.02,
+    "use_dynamic_shifting": true,
+    "base_shift": 0.5,
+    "max_shift": 1.15,
+    "snr_gamma": 5,
+    "snr_floor": 0.1,
+    "use_anchor": true,
+    "raft_mode": false,
+    "free_stream_ratio": 0.3,
+    "l2_schedule_mode": "constant",
+    "l2_initial_ratio": 0.3,
+    "l2_final_ratio": 0.3,
+    "l2_milestones": "",
+    "l2_include_anchor": false,
+    "l2_anchor_ratio": 0.3,
+    "latent_jitter_scale": 0,
+    "enable_timestep_aware_loss": false,
+    "timestep_high_threshold": 0.7,
+    "timestep_low_threshold": 0.3,
+    "enable_curvature": false,
+    "lambda_curvature": 0.05,
+    "curvature_interval": 10,
+    "curvature_start_epoch": 0
+  },
+  "network": {
+    "dim": 16,
+    "alpha": 16
+  },
+  "lora": {
+    "resume_training": false,
+    "resume_lora_path": "",
+    "train_adaln": false,
+    "train_norm": false,
+    "train_single_stream": false
+  },
+  "optimizer": {
+    "type": "AdamW8bit",
+    "learning_rate": "1e-4"
+  },
+  "training": {
+    "output_name": "zimage-fasiongen",
+    "learning_rate": 0.0001,
+    "learning_rate_str": "1e-4",
+    "weight_decay": 0,
+    "lr_scheduler": "constant",
+    "lr_warmup_steps": 0,
+    "lr_num_cycles": 1,
+    "lambda_l1": 1,
+    "lambda_cosine": 0.1,
+    "enable_freq": false,
+    "lambda_freq": 0.3,
+    "alpha_hf": 1,
+    "beta_lf": 0.2,
+    "enable_style": false,
+    "lambda_style": 0.3,
+    "lambda_light": 0.5,
+    "lambda_color": 0.3,
+    "lambda_fft": 0
+  },
+  "dataset": {
+    "batch_size": 1,
+    "shuffle": true,
+    "enable_bucket": true,
+    "drop_text_ratio": 0.1,
+    "datasets": [
+      {
+        "cache_directory": "datasets/fashiongen_unique_per_product",
+        "num_repeats": 1,
+        "resolution_limit": 1024
+      }
+    ]
+  },
+  "reg_dataset": {
+    "enabled": false,
+    "weight": 1,
+    "ratio": 0.5,
+    "datasets": []
+  },
+  "advanced": {
+    "max_grad_norm": 1,
+    "gradient_checkpointing": true,
+    "blocks_to_swap": 0,
+    "num_train_epochs": 10,
+    "save_every_n_epochs": 1,
+    "gradient_accumulation_steps": 4,
+    "mixed_precision": "bf16",
+    "seed": 42,
+    "num_gpus": 1,
+    "gpu_ids": ""
+  },
+  "modified": "2026-01-27T16:56:28.705327",
+  "created": "2025-12-04T10:46:26.582307"
+}
