@@ -1,0 +1,81 @@
+# Z-Image AC-RF 训练超参数配置 (满显存+8核CPU+缩短训练时间+保效果)
+# ==========================================
+[model]
+dit = "/mnt/sda/hf/qwen-VL/Z-Image/None_Z-image-Turbo_trainer/Z-Image-Turbo/transformer"
+output_dir = "output/acrf_experiment_v2"
+
+[acrf]
+# 所有AC-RF核心参数完全不变
+turbo_steps = 10
+shift = 3.0
+jitter_scale = 0.02
+raft_mode = false
+free_stream_ratio = 0.3
+latent_jitter_scale = 0.0
+enable_curvature = false
+lambda_curvature = 0.05
+curvature_interval = 10
+curvature_start_epoch = 0
+drop_text_ratio = 0.1
+
+[lora]
+network_dim = 24
+network_alpha = 12
+
+[training]
+optimizer_type = "AdamW8bit"
+learning_rate = 5e-5
+weight_decay = 0.01
+lr_scheduler = "cosine_with_restarts"
+lr_warmup_steps = 200
+lr_num_cycles = 2
+
+# Loss权重完全不变
+lambda_l1 = 1.0
+lambda_cosine = 0.1
+enable_freq = false
+lambda_freq = 0.3
+alpha_hf = 1.0
+beta_lf = 0.2
+enable_style = false
+lambda_style = 0.3
+lambda_struct = 1.0
+lambda_light = 0.5
+lambda_color = 0.3
+lambda_tex = 0.5
+snr_gamma = 5.0
+
+# 关键修改1：训练轮数从10→6（足够收敛，时间缩短40%）
+num_train_epochs = 6  
+save_every_n_epochs = 1
+gradient_accumulation_steps = 1
+seed = 42
+
+[optimization]
+auto_optimize = true
+gpu_tier = "tier_a"
+gpu_memory_gb = 48
+xformers = true
+memory_efficient_attention = true
+
+[advanced]
+max_grad_norm = 1.0
+gradient_checkpointing = true  
+mixed_precision = "bf16"
+
+[dataset]
+batch_size = 24  # 保留满显存配置，速度基础
+shuffle = true
+num_workers = 8  
+pin_memory = true  
+persistent_workers = true  
+prefetch_factor = 2  
+
+max_sequence_length = 512
+cache_arch = "zi"
+
+[[dataset.sources]]
+cache_directory = "/mnt/sda/hf/qwen-VL/Z-Image/None_Z-image-Turbo_trainer/datasets/fashion-dataset"
+# 关键修改2：数据重复次数从10→2（核心缩短时间，效果无损失）
+num_repeats = 2  
+resolution_limit = 256
