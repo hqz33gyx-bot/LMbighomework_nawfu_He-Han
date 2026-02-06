@@ -1,0 +1,34 @@
+numpy>=1.24.0
+Pillow>=10.0.0
+scipy>=1.10.0
+torch>=2.1.0
+torchvision>=0.16.0
+torchaudio>=2.1.0
+diffusers>=0.36.0
+transformers>=4.40.0
+accelerate>=0.27.0
+safetensors>=0.4.0
+
+peft>=0.10.0  # LoRA 加载必需
+protobuf>=3.20.0  # Tokenizer 依赖
+sentencepiece>=0.1.99 # Tokenizer 依赖
+bitsandbytes>=0.42.0  # AdamW8bit 优化器
+lpips>=0.1.4  # 感知损失
+einops>=0.7.0  # Flash Attention 依赖
+
+toml>=0.10.0
+tomli>=2.0.0
+PyYAML>=6.0.0
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.5.0
+websockets>=12.0
+python-multipart>=0.0.6
+python-dotenv>=1.0.0
+aiofiles>=23.0.0
+requests>=2.31.0
+httpx>=0.26.0
+modelscope>=1.10.0
+tqdm>=4.66.0
+rich>=13.0.0
+packaging>=23.0
