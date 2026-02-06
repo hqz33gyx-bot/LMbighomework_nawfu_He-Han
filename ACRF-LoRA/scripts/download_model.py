@@ -1,0 +1,313 @@
+"""
+多模型下载脚本 - 支持总进度显示
+
+支持:
+- Z-Image-Turbo (Tongyi-MAI/Z-Image-Turbo)
+- LongCat-Image-Dev (meituan-longcat/LongCat-Image-Dev)
+
+Usage:
+    python download_model.py <local_dir> [model_id]
+    
+Examples:
+    python download_model.py ./zimage_models                          # 默认下载 Z-Image
+    python download_model.py ./zimage_models Tongyi-MAI/Z-Image-Turbo
+    python download_model.py ./longcat_models meituan-longcat/LongCat-Image-Dev
+"""
+
+
+import sys
+import os
+import time
+import threading
+from pathlib import Path
+
+# 模型映射
+MODEL_MAP = {
+    "zimage": "Tongyi-MAI/Z-Image-Turbo",
+    "longcat": "meituan-longcat/LongCat-Image-Dev",
+    # 别名
+    "z-image": "Tongyi-MAI/Z-Image-Turbo",
+    "z-image-turbo": "Tongyi-MAI/Z-Image-Turbo",
+    "longcat-image": "meituan-longcat/LongCat-Image-Dev",
+}
+
+# 预估模型大小 (GB)
+MODEL_SIZES = {
+    "Tongyi-MAI/Z-Image-Turbo": 32.0,
+    "meituan-longcat/LongCat-Image-Dev": 35.0,
+}
+
+
+def get_model_id(model_arg: str) -> str:
+    """解析模型 ID"""
+    lower_arg = model_arg.lower().replace("_", "-")
+    if lower_arg in MODEL_MAP:
+        return MODEL_MAP[lower_arg]
+    return model_arg
+
+
+def get_dir_size_gb(path: Path) -> float:
+    """获取目录大小 (GB)"""
+    total = 0
+    try:
+        for f in path.rglob("*"):
+            # 忽略隐藏文件和目录 (如 ._____temp)
+            if any(part.startswith('.') for part in f.parts):
+                continue
+            if f.is_file():
+                total += f.stat().st_size
+    except Exception:
+        pass
+    return total / (1024 ** 3)
+
+
+def format_size(gb: float) -> str:
+    """格式化大小显示"""
+    if gb < 1:
+        return f"{gb * 1024:.1f} MB"
+    return f"{gb:.2f} GB"
+
+
+def check_connectivity(model_id: str) -> bool:
+    """检查 ModelScope 连接性"""
+    print(f"[INFO] Checking connectivity to ModelScope for {model_id}...")
+    try:
+        from modelscope.hub.api import HubApi
+        api = HubApi()
+        # 尝试获取文件列表作为连接测试
+        api.get_model_files(model_id)
+        print("[INFO] Connectivity check passed.")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Connectivity check failed: {e}")
+        print("[TIP] Please check your network connection or proxy settings.")
+        return False
+
+
+def progress_monitor(model_dir: Path, expected_size_gb: float, stop_event: threading.Event):
+    """后台线程监控下载进度"""
+    last_size = 0
+    last_time = time.time()
+    start_time = time.time()
+    
+    while not stop_event.is_set():
+        current_size = get_dir_size_gb(model_dir)
+        current_time = time.time()
+        
+        # 计算速度
+        time_delta = current_time - last_time
+        if time_delta > 0:
+            speed = (current_size - last_size) / time_delta  # GB/s
+            speed_str = f"{speed * 1024:.1f} MB/s" if speed > 0 else "0.0 MB/s"
+        else:
+            speed_str = "0.0 MB/s"
+        
+        # 计算进度
+        if expected_size_gb > 0:
+            progress = min(current_size / expected_size_gb * 100, 99.9)
+        else:
+            progress = 0
+        
+        # 显示进度条
+        bar_width = 30
+        filled = int(bar_width * progress / 100)
+        bar = "=" * filled + "-" * (bar_width - filled)
+        
+        # 状态描述
+        elapsed = int(current_time - start_time)
+        if speed <= 0 and elapsed > 10:
+             status = "验证中..." if current_size > 0 else "准备中..."
+        else:
+             status = "下载中..."
+
+        # 打印进度（使用换行符，确保 readline 能读取）
+        msg = f"[PROGRESS] [{bar}] {progress:.1f}% | {format_size(current_size)}/{format_size(expected_size_gb)} | {speed_str} | {status}"
+        print(msg, flush=True)
+        
+        last_size = current_size
+        last_time = current_time
+        
+        time.sleep(1)
+
+
+def main():
+    # 设置 stdout 为无缓冲模式
+    sys.stdout.reconfigure(encoding='utf-8')
+    
+    if len(sys.argv) < 2:
+        print("Usage: python download_model.py <local_dir> [model_id]")
+        print("\nSupported models:")
+        print("  - zimage (default): Tongyi-MAI/Z-Image-Turbo (~32GB)")
+        print("  - longcat: meituan-longcat/LongCat-Image-Dev (~35GB)")
+        sys.exit(1)
+    
+    model_dir = Path(sys.argv[1])
+    
+    # 获取模型 ID
+    if len(sys.argv) >= 3:
+        model_id = get_model_id(sys.argv[2])
+    else:
+        model_id = MODEL_MAP["zimage"]
+    
+    # 获取预估大小 (动态计算)
+    try:
+        from modelscope.hub.api import HubApi
+        api = HubApi()
+        remote_files = api.get_model_files(model_id, recursive=True)
+        total_size = 0
+        for rf in remote_files:
+            # 过滤逻辑保持一致
+            if rf.get('Type') == 'tree': continue
+            name = rf.get('Path') or rf.get('Name', '')
+            if not name or name.endswith('/'): continue
+            if 'readme' in name.lower() or name.endswith('.md'): continue
+            total_size += rf.get('Size', 0)
+        expected_size = total_size / (1024**3)
+    except Exception:
+        expected_size = MODEL_SIZES.get(model_id, 30.0)
+    
+    print("=" * 60)
+    print(f"Model ID: {model_id}")
+    print(f"Target directory: {model_dir}")
+    print(f"Expected size: ~{format_size(expected_size)}")
+    print("=" * 60)
+    
+    # 检查连接性
+    if not check_connectivity(model_id):
+        sys.exit(1)
+
+    print("")
+    print("[INFO] Starting download process...")
+    print("[INFO] Note: If you have downloaded files before, the script will verify them first.")
+    print("[INFO] This verification phase consumes Disk I/O but NO Network traffic.")
+    print("[INFO] Please wait patiently if the speed shows 0.0 MB/s initially.")
+    print("")
+    
+    # 确保目录存在
+    model_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 启动进度监控线程
+    stop_event = threading.Event()
+    monitor_thread = threading.Thread(
+        target=progress_monitor,
+        args=(model_dir, expected_size, stop_event),
+        daemon=True
+    )
+    monitor_thread.start()
+    
+
+
+
+    try:
+        from modelscope.hub.snapshot_download import snapshot_download
+        from modelscope.hub.file_download import model_file_download
+        from modelscope.hub.api import HubApi
+        
+        # 执行下载(阻塞调用)
+        print(f"Downloading Model from https://www.modelscope.cn to directory: {model_dir}", flush=True)
+        
+        # 先获取远程文件列表，检测本地缺失或不完整的文件
+        print("[INFO] 检查远程文件列表...", flush=True)
+        missing_files = []
+        
+        try:
+            api = HubApi()
+            remote_files = api.get_model_files(model_id, recursive=True)
+            
+            # 检查每个远程文件是否存在且大小正确
+            for rf in remote_files:
+                file_path = rf.get('Path') or rf.get('Name', '')
+                file_size = rf.get('Size', 0)
+                file_type = rf.get('Type', '')
+                
+                # 过滤目录 (Type='tree' 或以 / 结尾)
+                if file_type == 'tree' or not file_path or file_path.endswith('/'):
+                    continue
+                
+                # 过滤 .gitattributes 和 .gitignore 文件
+                if file_path.endswith(".gitattributes") or file_path.endswith(".gitignore"):
+                    continue
+
+                # 强力过滤: 如果 size 为 0 且没有后缀名，极大概率是目录
+                if file_size == 0 and '.' not in file_path.split('/')[-1]:
+                    continue
+
+                # 过滤 README 和 git 文件
+                path_lower = file_path.lower()
+                if 'readme' in path_lower or path_lower.endswith('.md') or '.git' in path_lower:
+                    continue
+                    
+                local_file = model_dir / file_path
+                if not local_file.exists():
+                    missing_files.append((file_path, file_size))
+                    print(f"[MISSING] {file_path}", flush=True)
+                elif file_size > 0 and local_file.stat().st_size != file_size:
+                    # 文件大小不匹配，删除以便重新下载
+                    missing_files.append((file_path, file_size))
+                    print(f"[INCOMPLETE] {file_path} (local: {local_file.stat().st_size}, remote: {file_size})", flush=True)
+                    local_file.unlink()  # 删除不完整文件
+                    
+        except Exception as e:
+            print(f"[WARN] 无法获取远程文件列表: {e}", flush=True)
+        
+        # 如果有缺失文件，逐个下载（绕过 snapshot_download 的全量验证）
+        if missing_files:
+            print(f"[INFO] 发现 {len(missing_files)} 个缺失/不完整文件，逐个下载...", flush=True)
+            for i, (file_path, file_size) in enumerate(missing_files):
+                print(f"[DOWNLOAD] ({i+1}/{len(missing_files)}) {file_path} ({format_size(file_size / (1024**3)) if file_size > 0 else '未知大小'})", flush=True)
+                try:
+                    # 使用 model_file_download 下载单个文件
+                    downloaded_path = model_file_download(
+                        model_id=model_id,
+                        file_path=file_path,
+                        local_dir=str(model_dir),
+                    )
+                    print(f"[OK] {file_path}", flush=True)
+                except Exception as e:
+                    print(f"[ERROR] 下载 {file_path} 失败: {e}", flush=True)
+            print("[INFO] 缺失文件下载完成!", flush=True)
+        else:
+            # 没有缺失文件，使用 snapshot_download 做最终验证
+            print("[INFO] 所有文件已存在，使用 snapshot_download 验证...", flush=True)
+            snapshot_download(
+                model_id, 
+                local_dir=str(model_dir),
+            )
+        
+        # 停止监控
+        stop_event.set()
+        monitor_thread.join(timeout=2)
+        
+        # 最终大小
+        final_size = get_dir_size_gb(model_dir)
+        
+        print("")  # 换行
+        print("")
+        print("=" * 60)
+        print(f"[PROGRESS] Download complete!")
+        print(f"[PROGRESS] Total size: {format_size(final_size)}")
+        print(f"[PROGRESS] Saved to: {model_dir}")
+        print("=" * 60)
+        
+    except Exception as e:
+        stop_event.set()
+        monitor_thread.join(timeout=2)
+        print("")
+        print("")
+        print("=" * 60)
+        print(f"[ERROR] Download failed: {e}")
+        print("=" * 60)
+        # 写入 crash log
+        with open("download_crash.log", "w") as f:
+            f.write(f"Download failed: {e}\n")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        with open("download_crash.log", "w") as f:
+            f.write(f"Script crashed: {e}\n")
+        print(f"[CRASH] Script crashed: {e}")
+        sys.exit(1)
